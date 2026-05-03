@@ -103,29 +103,58 @@ function generatePost(type: string, form: any) {
 const inp = { width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#FAFAF9', fontSize: 14, outline: 'none', boxSizing: 'border-box' as const, fontFamily: 'inherit', color: C.text };
 const lbl = { display: 'block', fontSize: 12, fontWeight: '600', color: C.textSub, marginBottom: 5 };
 
+// 折れ線グラフコンポーネント
+function LineChart({ data }: { data: { month: string; revenue: number; profit: number }[] }) {
+  const W = 320, H = 160, PL = 48, PR = 16, PT = 16, PB = 32;
+  const IW = W - PL - PR, IH = H - PT - PB;
+  const maxVal = Math.max(...data.map(d => d.revenue), 1);
+  const toX = (i: number) => PL + (i / Math.max(data.length - 1, 1)) * IW;
+  const toY = (v: number) => PT + IH - (v / maxVal) * IH;
+  const revenuePoints = data.map((d, i) => `${toX(i)},${toY(d.revenue)}`).join(' ');
+  const profitPoints = data.map((d, i) => `${toX(i)},${toY(d.profit)}`).join(' ');
+  const yLabels = [0, 0.25, 0.5, 0.75, 1].map(r => Math.round(maxVal * r));
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+      {/* グリッド線 */}
+      {yLabels.map((v, i) => {
+        const y = toY(v);
+        return (
+          <g key={i}>
+            <line x1={PL} y1={y} x2={W - PR} y2={y} stroke={C.border} strokeWidth={0.5} strokeDasharray="3,3" />
+            <text x={PL - 4} y={y + 4} fontSize={9} fill={C.textMuted} textAnchor="end">
+              {v >= 10000 ? `${Math.round(v / 1000)}k` : v === 0 ? '0' : `${v}`}
+            </text>
+          </g>
+        );
+      })}
+      {/* X軸ラベル */}
+      {data.map((d, i) => (
+        <text key={i} x={toX(i)} y={H - 4} fontSize={9} fill={C.textMuted} textAnchor="middle">{d.month}</text>
+      ))}
+      {/* 売上ライン */}
+      {data.length > 1 && <polyline points={revenuePoints} fill="none" stroke={C.primary} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+      {/* 利益ライン */}
+      {data.length > 1 && <polyline points={profitPoints} fill="none" stroke={C.green} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray="5,3" />}
+      {/* 売上ドット */}
+      {data.map((d, i) => <circle key={i} cx={toX(i)} cy={toY(d.revenue)} r={3} fill={C.primary} />)}
+      {/* 利益ドット */}
+      {data.map((d, i) => <circle key={i} cx={toX(i)} cy={toY(d.profit)} r={3} fill={C.green} />)}
+    </svg>
+  );
+}
+
 // ===== 価格計算ページ =====
 function PricePage() {
-  const [settings, setSettings] = useState({
-    hourlyWage: 1500,
-    targetProfit: 30,
-    feeRate: 10.659,
-    shippingCost: 280,
-    multiplyRate: 3,
-  });
-  const [form, setForm] = useState({
-    materialCost: '',
-    workHours: '',
-    mode: 'detail',
-  });
+  const [settings, setSettings] = useState({ hourlyWage: 1500, targetProfit: 30, feeRate: 10.659, shippingCost: 280, multiplyRate: 3 });
+  const [form, setForm] = useState({ materialCost: '', workHours: '', mode: 'detail' });
   const [showSettings, setShowSettings] = useState(false);
   const setSetting = (k: string, v: number) => setSettings(s => ({ ...s, [k]: v }));
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-
   const result = useMemo(() => {
     const mat = Number(form.materialCost) || 0;
     const hours = Number(form.workHours) || 0;
     if (mat === 0) return null;
-
     if (form.mode === 'detail') {
       const laborCost = hours * settings.hourlyWage;
       const totalCost = mat + laborCost + settings.shippingCost;
@@ -133,20 +162,16 @@ function PricePage() {
       const recommended = Math.ceil(totalCost / rate / 100) * 100;
       const fee = Math.floor(recommended * settings.feeRate / 100);
       const profit = recommended - mat - laborCost - settings.shippingCost - fee;
-      const profitRate = Math.round((profit / recommended) * 100);
-      return { recommended, totalCost, laborCost, fee, profit, profitRate, mat, mode: 'detail' };
+      return { recommended, totalCost, laborCost, fee, profit, profitRate: Math.round((profit / recommended) * 100), mat, mode: 'detail' };
     } else {
       const recommended = Math.ceil((mat * settings.multiplyRate + settings.shippingCost) / 100) * 100;
       const fee = Math.floor(recommended * settings.feeRate / 100);
       const profit = recommended - mat - settings.shippingCost - fee;
-      const profitRate = Math.round((profit / recommended) * 100);
-      return { recommended, fee, profit, profitRate, mat, mode: 'multiply' };
+      return { recommended, fee, profit, profitRate: Math.round((profit / recommended) * 100), mat, mode: 'multiply' };
     }
   }, [form, settings]);
-
   return (
     <div style={{ maxWidth: 680, margin: '0 auto', padding: 16 }}>
-      {/* 計算ロジック設定 */}
       <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, marginBottom: 12, overflow: 'hidden' }}>
         <button onClick={() => setShowSettings(!showSettings)} style={{ width: '100%', padding: '14px 16px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: '700', color: C.text }}>計算ロジックの設定</span>
@@ -155,61 +180,32 @@ function PricePage() {
         {showSettings && (
           <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
-              {[
-                { label: '時給（円）', key: 'hourlyWage', value: settings.hourlyWage },
-                { label: '目標利益率（%）', key: 'targetProfit', value: settings.targetProfit },
-                { label: 'minne手数料率（%）', key: 'feeRate', value: settings.feeRate },
-                { label: '送料・梱包費（円）', key: 'shippingCost', value: settings.shippingCost },
-                { label: '倍率計算の倍率', key: 'multiplyRate', value: settings.multiplyRate },
-              ].map(s => (
-                <div key={s.key}>
-                  <label style={lbl}>{s.label}</label>
-                  <input type="number" style={inp} value={s.value} onChange={e => setSetting(s.key, Number(e.target.value))} />
-                </div>
+              {[{ label: '時給（円）', key: 'hourlyWage', value: settings.hourlyWage }, { label: '目標利益率（%）', key: 'targetProfit', value: settings.targetProfit }, { label: 'minne手数料率（%）', key: 'feeRate', value: settings.feeRate }, { label: '送料・梱包費（円）', key: 'shippingCost', value: settings.shippingCost }, { label: '倍率計算の倍率', key: 'multiplyRate', value: settings.multiplyRate }].map(s => (
+                <div key={s.key}><label style={lbl}>{s.label}</label><input type="number" style={inp} value={s.value} onChange={e => setSetting(s.key, Number(e.target.value))} /></div>
               ))}
-            </div>
-            <div style={{ marginTop: 10, padding: '10px 12px', background: C.primaryLight, borderRadius: 8, fontSize: 12, color: C.primary }}>
-              設定を変えると計算結果がリアルタイムで更新されます
             </div>
           </div>
         )}
       </div>
-
-      {/* 計算方式選択 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-        {[
-          { id: 'detail', label: '詳細積み上げ型', desc: '材料費＋時給＋利益率から算出' },
-          { id: 'multiply', label: '倍率型', desc: `材料費×${settings.multiplyRate}倍で簡単算出` },
-        ].map(m => (
+        {[{ id: 'detail', label: '詳細積み上げ型', desc: '材料費＋時給＋利益率から算出' }, { id: 'multiply', label: '倍率型', desc: `材料費×${settings.multiplyRate}倍で簡単算出` }].map(m => (
           <button key={m.id} onClick={() => setF('mode', m.id)} style={{ padding: '14px 12px', borderRadius: 12, border: `2px solid ${form.mode === m.id ? C.primary : C.border}`, background: form.mode === m.id ? C.primaryLight : C.surface, cursor: 'pointer', textAlign: 'left' as const }}>
             <div style={{ fontSize: 13, fontWeight: '700', color: form.mode === m.id ? C.primary : C.text, marginBottom: 4 }}>{m.label}</div>
             <div style={{ fontSize: 11, color: C.textMuted }}>{m.desc}</div>
           </button>
         ))}
       </div>
-
-      {/* 入力フォーム */}
       <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, marginBottom: 12 }}>
         <div style={{ fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 16 }}>商品情報を入力</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ gridColumn: '1/-1' }}>
-            <label style={lbl}>材料費（円）</label>
-            <input type="number" style={inp} value={form.materialCost} onChange={e => setF('materialCost', e.target.value)} placeholder="例：1500" />
-          </div>
-          {form.mode === 'detail' && (
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={lbl}>制作時間（時間）</label>
-              <input type="number" style={inp} value={form.workHours} onChange={e => setF('workHours', e.target.value)} placeholder="例：3" />
-            </div>
-          )}
+          <div style={{ gridColumn: '1/-1' }}><label style={lbl}>材料費（円）</label><input type="number" style={inp} value={form.materialCost} onChange={e => setF('materialCost', e.target.value)} placeholder="例：1500" /></div>
+          {form.mode === 'detail' && <div style={{ gridColumn: '1/-1' }}><label style={lbl}>制作時間（時間）</label><input type="number" style={inp} value={form.workHours} onChange={e => setF('workHours', e.target.value)} placeholder="例：3" /></div>}
         </div>
       </div>
-
-      {/* 計算結果 */}
       {result && (
         <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
           <div style={{ background: C.primary, padding: '20px 16px', textAlign: 'center' as const }}>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginBottom: 4, fontWeight: '600', letterSpacing: '0.8px' }}>推奨販売価格</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginBottom: 4, fontWeight: '600' }}>推奨販売価格</div>
             <div style={{ fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: '-1.5px' }}>{fmt(result.recommended)}</div>
           </div>
           <div style={{ padding: 16 }}>
@@ -226,9 +222,6 @@ function PricePage() {
                 <span style={{ fontSize: 14, fontWeight: '700', color: row.color }}>{row.value}</span>
               </div>
             ))}
-          </div>
-          <div style={{ padding: '12px 16px', background: C.primaryLight, margin: '0 16px 16px', borderRadius: 8, fontSize: 12, color: C.primary }}>
-            100円単位で切り上げた推奨価格です。最終的な価格はご自身で調整してください。
           </div>
         </div>
       )}
@@ -353,7 +346,13 @@ function SalesPage() {
     return { totalRevenue, totalProfit, totalFee, totalCost, count: filtered.length, byMonth };
   }, [filtered, sales]);
   const profitRate = stats.totalRevenue ? Math.round((stats.totalProfit / stats.totalRevenue) * 100) : 0;
-  const maxRev = Math.max(...Object.values(stats.byMonth).map((m: any) => m.revenue), 1);
+
+  // 折れ線グラフ用データ
+  const chartData = MONTHS.map((month, i) => {
+    const d = (stats.byMonth as any)[i];
+    return { month: month.replace('月', ''), revenue: d ? d.revenue : 0, profit: d ? d.profit : 0 };
+  }).filter((_, i) => (stats.byMonth as any)[i]);
+
   const STABS = [{ id: 'overview', label: '概要' }, { id: 'monthly', label: '月別' }, { id: 'list', label: '明細' }];
   return (
     <div style={{ maxWidth: 680, margin: '0 auto' }}>
@@ -367,6 +366,7 @@ function SalesPage() {
           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: 13 }}><option value="all">全期間</option>{MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
           <span style={{ marginLeft: 'auto', fontSize: 12, color: C.textMuted, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px' }}>{filtered.length}件</span>
         </div>
+
         {tab === 'overview' && <>
           <div style={{ background: C.primary, borderRadius: 14, padding: 20, marginBottom: 12, color: '#fff' }}>
             <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 4, letterSpacing: '0.8px', textTransform: 'uppercase' as const, fontWeight: '600' }}>総売上</div>
@@ -380,7 +380,42 @@ function SalesPage() {
             {[{ label: '売上合計', value: stats.totalRevenue, color: C.text, sign: '' }, { label: '原価・送料', value: stats.totalCost, color: C.red, sign: '-' }, { label: 'minne手数料', value: stats.totalFee, color: C.red, sign: '-' }, { label: '純利益', value: stats.totalProfit, color: C.green, sign: '+', bold: true }].map((r, i, a) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '13px 16px', borderBottom: i < a.length - 1 ? `1px solid ${C.border}` : 'none', background: r.bold ? C.greenBg : 'transparent' }}><span style={{ fontSize: 13, color: r.bold ? C.text : C.textSub, fontWeight: r.bold ? '700' : '400' }}>{r.label}</span><span style={{ fontSize: 14, fontWeight: '700', color: r.color }}>{r.sign}{fmt(r.value)}</span></div>)}
           </div>
         </>}
-        {tab === 'monthly' && <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}><div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}><span style={{ fontSize: 13, fontWeight: '700', color: C.text }}>月別売上推移</span></div><div style={{ padding: '8px 16px 16px' }}>{MONTHS.map((m, i) => { const d = (stats.byMonth as any)[i]; const pct = d ? (d.revenue / maxRev) * 100 : 0; return <div key={i} style={{ padding: '10px 0', borderBottom: i < 11 ? `1px solid ${C.border}` : 'none' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontSize: 12, fontWeight: '600', color: d ? C.text : C.textMuted, width: 28 }}>{m}</span><div style={{ display: 'flex', gap: 10 }}>{d ? <><span style={{ fontSize: 11, color: C.textMuted }}>{d.count}件</span><span style={{ fontSize: 11, color: C.green, fontWeight: '600' }}>+{fmt(d.profit)}</span><span style={{ fontSize: 13, fontWeight: '700', color: C.text }}>{fmt(d.revenue)}</span></> : <span style={{ fontSize: 12, color: C.textMuted }}>—</span>}</div></div><div style={{ height: 6, background: C.bg, borderRadius: 3 }}><div style={{ height: '100%', width: `${pct}%`, background: C.primary, borderRadius: 3 }} /></div></div>; })}</div></div>}
+
+        {tab === 'monthly' && (
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 4 }}>月別売上推移</div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 2, background: C.primary, borderRadius: 2 }} /><span style={{ fontSize: 11, color: C.textSub }}>売上</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 2, background: C.green, borderRadius: 2, borderTop: `2px dashed ${C.green}` }} /><span style={{ fontSize: 11, color: C.textSub }}>利益</span></div>
+              </div>
+            </div>
+            {chartData.length >= 2 ? (
+              <div style={{ padding: '16px 16px 8px' }}>
+                <LineChart data={chartData} />
+              </div>
+            ) : (
+              <div style={{ padding: 20, color: C.textMuted, fontSize: 13, textAlign: 'center' as const }}>データが2件以上になるとグラフが表示されます</div>
+            )}
+            <div style={{ padding: '0 16px 16px' }}>
+              {MONTHS.map((m, i) => {
+                const d = (stats.byMonth as any)[i];
+                if (!d) return null;
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 13, fontWeight: '600', color: C.text, width: 36 }}>{m}</span>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: C.textMuted }}>{d.count}件</span>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: '600' }}>+{fmt(d.profit)}</span>
+                      <span style={{ fontSize: 14, fontWeight: '700', color: C.text }}>{fmt(d.revenue)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {tab === 'list' && <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}><div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}><span style={{ fontSize: 13, fontWeight: '700', color: C.text }}>売上明細</span></div>{filtered.length === 0 ? <div style={{ padding: 16, color: C.textMuted }}>データなし</div> : filtered.map((s, i, a) => <div key={s.id} style={{ padding: '12px 16px', borderBottom: i < a.length - 1 ? `1px solid ${C.border}` : 'none' }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><div><div style={{ fontSize: 13, fontWeight: '600', color: C.text }}>{s.product}</div><div style={{ display: 'flex', gap: 6, marginTop: 3 }}><span style={{ fontSize: 11, color: C.textMuted }}>{s.date}</span><span style={{ fontSize: 11, background: C.primaryLight, color: C.primary, borderRadius: 4, padding: '1px 6px', fontWeight: '600' }}>{s.platform}</span></div></div><div style={{ textAlign: 'right' as const }}><div style={{ fontSize: 14, fontWeight: '700', color: C.text }}>{fmt(s.price)}</div><div style={{ fontSize: 11, color: C.green, fontWeight: '600' }}>+{fmt(calcProfit(s))}</div></div></div><button onClick={() => setSales(p => p.filter(x => x.id !== s.id))} style={{ marginTop: 8, padding: '3px 8px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, color: C.textMuted, cursor: 'pointer' }}>削除</button></div>)}</div>}
       </div>
       {showForm && <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }} onClick={() => setShowForm(false)}><div style={{ background: C.surface, borderRadius: '20px 20px 0 0', padding: '24px 20px', width: '100%', maxWidth: 680, margin: '0 auto', boxSizing: 'border-box' as const }} onClick={e => e.stopPropagation()}><div style={{ fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 20 }}>売上を追加</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><div style={{ gridColumn: '1/-1' }}><label style={lbl}>日付</label><input type="date" style={inp} value={form.date} onChange={e => set('date', e.target.value)} /></div><div style={{ gridColumn: '1/-1' }}><label style={lbl}>商品名</label><input style={inp} value={form.product} onChange={e => set('product', e.target.value)} placeholder="例：ニット帽（ネイビー）" /></div><div><label style={lbl}>カテゴリ</label><select style={inp} value={form.category} onChange={e => set('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div><div><label style={lbl}>プラットフォーム</label><select style={inp} value={form.platform} onChange={e => set('platform', e.target.value)}>{PLATFORMS.map(p => <option key={p}>{p}</option>)}</select></div><div><label style={lbl}>販売価格（円）</label><input type="number" style={inp} value={form.price} onChange={e => set('price', e.target.value)} placeholder="5500" /></div><div><label style={lbl}>原価（円）</label><input type="number" style={inp} value={form.cost} onChange={e => set('cost', e.target.value)} placeholder="2300" /></div><div style={{ gridColumn: '1/-1' }}><label style={lbl}>送料・梱包費（円）</label><input type="number" style={inp} value={form.shipping} onChange={e => set('shipping', e.target.value)} placeholder="280" /></div></div><div style={{ display: 'flex', gap: 8, marginTop: 20 }}><button onClick={() => setShowForm(false)} style={{ flex: 1, padding: 13, borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 14, cursor: 'pointer', color: C.textSub }}>キャンセル</button><button onClick={addSale} style={{ flex: 2, padding: 13, borderRadius: 10, border: 'none', background: C.primary, color: '#fff', fontSize: 14, fontWeight: '700', cursor: 'pointer' }}>追加する</button></div></div></div>}
