@@ -144,7 +144,7 @@ function LineChart({ data }: { data: { month: string; revenue: number; profit: n
           <g key={i}>
             <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#E7E5E4" strokeWidth={1} />
             <text x={PL - 6} y={y + 4} fontSize={9} fill={C.textMuted} textAnchor="end" fontFamily="sans-serif">
-              {v >= 10000 ? `${(v / 10000).toFixed(1)}万` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`}
+              {v >= 10000 ? `${(v / 10000).toFixed(1)}万` : v >= 1000 ? `${(v / 1000).toFixed(0)},000` : `${v}`}
             </text>
           </g>
         );
