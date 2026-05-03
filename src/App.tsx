@@ -2305,7 +2305,7 @@ function ProductsPage() {
 }
 
 export default function App() {
-  const [page, setPage] = useState('desc');
+  const [page, setPage] = useState('sales');
   return (
     <div
       style={{
