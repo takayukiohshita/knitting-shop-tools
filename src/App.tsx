@@ -103,43 +103,86 @@ function generatePost(type: string, form: any) {
 const inp = { width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#FAFAF9', fontSize: 14, outline: 'none', boxSizing: 'border-box' as const, fontFamily: 'inherit', color: C.text };
 const lbl = { display: 'block', fontSize: 12, fontWeight: '600', color: C.textSub, marginBottom: 5 };
 
-// 折れ線グラフコンポーネント
+// ===== 折れ線グラフ（家計ノート風）=====
 function LineChart({ data }: { data: { month: string; revenue: number; profit: number }[] }) {
-  const W = 320, H = 160, PL = 48, PR = 16, PT = 16, PB = 32;
+  const W = 340, H = 180, PL = 52, PR = 20, PT = 20, PB = 36;
   const IW = W - PL - PR, IH = H - PT - PB;
   const maxVal = Math.max(...data.map(d => d.revenue), 1);
   const toX = (i: number) => PL + (i / Math.max(data.length - 1, 1)) * IW;
   const toY = (v: number) => PT + IH - (v / maxVal) * IH;
-  const revenuePoints = data.map((d, i) => `${toX(i)},${toY(d.revenue)}`).join(' ');
-  const profitPoints = data.map((d, i) => `${toX(i)},${toY(d.profit)}`).join(' ');
-  const yLabels = [0, 0.25, 0.5, 0.75, 1].map(r => Math.round(maxVal * r));
+
+  const revenuePolyline = data.map((d, i) => `${toX(i)},${toY(d.revenue)}`).join(' ');
+  const profitPolyline = data.map((d, i) => `${toX(i)},${toY(d.profit)}`).join(' ');
+
+  // グラデーション塗りつぶし用パス
+  const revenueFillPath = data.length > 1
+    ? `M${toX(0)},${toY(data[0].revenue)} ` +
+      data.slice(1).map((d, i) => `L${toX(i+1)},${toY(d.revenue)}`).join(' ') +
+      ` L${toX(data.length-1)},${PT+IH} L${toX(0)},${PT+IH} Z`
+    : '';
+
+  const yTicks = 4;
+  const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => Math.round((maxVal / yTicks) * i));
 
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-      {/* グリッド線 */}
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+      <defs>
+        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.primary} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={C.primary} stopOpacity="0.02" />
+        </linearGradient>
+        <linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.green} stopOpacity="0.15" />
+          <stop offset="100%" stopColor={C.green} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+
+      {/* グリッド線・Y軸ラベル */}
       {yLabels.map((v, i) => {
         const y = toY(v);
         return (
           <g key={i}>
-            <line x1={PL} y1={y} x2={W - PR} y2={y} stroke={C.border} strokeWidth={0.5} strokeDasharray="3,3" />
-            <text x={PL - 4} y={y + 4} fontSize={9} fill={C.textMuted} textAnchor="end">
-              {v >= 10000 ? `${Math.round(v / 1000)}k` : v === 0 ? '0' : `${v}`}
+            <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#E7E5E4" strokeWidth={1} />
+            <text x={PL - 6} y={y + 4} fontSize={9} fill={C.textMuted} textAnchor="end" fontFamily="sans-serif">
+              {v >= 10000 ? `${(v / 10000).toFixed(1)}万` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`}
             </text>
           </g>
         );
       })}
+
       {/* X軸ラベル */}
       {data.map((d, i) => (
-        <text key={i} x={toX(i)} y={H - 4} fontSize={9} fill={C.textMuted} textAnchor="middle">{d.month}</text>
+        <text key={i} x={toX(i)} y={H - 6} fontSize={10} fill={C.textSub} textAnchor="middle" fontFamily="sans-serif" fontWeight="500">
+          {d.month}月
+        </text>
       ))}
+
+      {/* 売上グラデーション塗りつぶし */}
+      {revenueFillPath && <path d={revenueFillPath} fill="url(#revGrad)" />}
+
       {/* 売上ライン */}
-      {data.length > 1 && <polyline points={revenuePoints} fill="none" stroke={C.primary} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+      {data.length > 1 && (
+        <polyline points={revenuePolyline} fill="none" stroke={C.primary} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      )}
+
       {/* 利益ライン */}
-      {data.length > 1 && <polyline points={profitPoints} fill="none" stroke={C.green} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray="5,3" />}
+      {data.length > 1 && (
+        <polyline points={profitPolyline} fill="none" stroke={C.green} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray="6,3" />
+      )}
+
       {/* 売上ドット */}
-      {data.map((d, i) => <circle key={i} cx={toX(i)} cy={toY(d.revenue)} r={3} fill={C.primary} />)}
+      {data.map((d, i) => (
+        <g key={`rv-${i}`}>
+          <circle cx={toX(i)} cy={toY(d.revenue)} r={5} fill="#fff" stroke={C.primary} strokeWidth={2.5} />
+        </g>
+      ))}
+
       {/* 利益ドット */}
-      {data.map((d, i) => <circle key={i} cx={toX(i)} cy={toY(d.profit)} r={3} fill={C.green} />)}
+      {data.map((d, i) => (
+        <g key={`pf-${i}`}>
+          <circle cx={toX(i)} cy={toY(d.profit)} r={4} fill="#fff" stroke={C.green} strokeWidth={2} />
+        </g>
+      ))}
     </svg>
   );
 }
@@ -347,13 +390,13 @@ function SalesPage() {
   }, [filtered, sales]);
   const profitRate = stats.totalRevenue ? Math.round((stats.totalProfit / stats.totalRevenue) * 100) : 0;
 
-  // 折れ線グラフ用データ
   const chartData = MONTHS.map((month, i) => {
     const d = (stats.byMonth as any)[i];
-    return { month: month.replace('月', ''), revenue: d ? d.revenue : 0, profit: d ? d.profit : 0 };
-  }).filter((_, i) => (stats.byMonth as any)[i]);
+    return { month: `${i + 1}`, revenue: d ? d.revenue : 0, profit: d ? d.profit : 0, hasData: !!d };
+  }).filter(d => d.hasData);
 
   const STABS = [{ id: 'overview', label: '概要' }, { id: 'monthly', label: '月別' }, { id: 'list', label: '明細' }];
+
   return (
     <div style={{ maxWidth: 680, margin: '0 auto' }}>
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -383,31 +426,50 @@ function SalesPage() {
 
         {tab === 'monthly' && (
           <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 4 }}>月別売上推移</div>
+            {/* ヘッダー */}
+            <div style={{ padding: '16px 16px 12px' }}>
+              <div style={{ fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 8 }}>月別売上推移</div>
               <div style={{ display: 'flex', gap: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 2, background: C.primary, borderRadius: 2 }} /><span style={{ fontSize: 11, color: C.textSub }}>売上</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 16, height: 2, background: C.green, borderRadius: 2, borderTop: `2px dashed ${C.green}` }} /><span style={{ fontSize: 11, color: C.textSub }}>利益</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 24, height: 3, background: C.primary, borderRadius: 2 }} />
+                  <span style={{ fontSize: 11, color: C.textSub, fontWeight: '500' }}>売上</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg width="24" height="3"><line x1="0" y1="1.5" x2="24" y2="1.5" stroke={C.green} strokeWidth="2" strokeDasharray="5,3" /></svg>
+                  <span style={{ fontSize: 11, color: C.textSub, fontWeight: '500' }}>利益</span>
+                </div>
               </div>
             </div>
+
+            {/* グラフ */}
             {chartData.length >= 2 ? (
-              <div style={{ padding: '16px 16px 8px' }}>
+              <div style={{ padding: '0 16px 12px' }}>
                 <LineChart data={chartData} />
               </div>
             ) : (
-              <div style={{ padding: 20, color: C.textMuted, fontSize: 13, textAlign: 'center' as const }}>データが2件以上になるとグラフが表示されます</div>
+              <div style={{ padding: '20px 16px', color: C.textMuted, fontSize: 13, textAlign: 'center' as const }}>
+                データが2件以上になるとグラフが表示されます
+              </div>
             )}
-            <div style={{ padding: '0 16px 16px' }}>
+
+            {/* 区切り線 */}
+            <div style={{ borderTop: `1px solid ${C.border}` }} />
+
+            {/* 月別サマリー */}
+            <div style={{ padding: '8px 0' }}>
+              <div style={{ padding: '8px 16px', fontSize: 11, fontWeight: '700', color: C.textMuted, letterSpacing: '0.5px' }}>月別サマリー</div>
               {MONTHS.map((m, i) => {
                 const d = (stats.byMonth as any)[i];
                 if (!d) return null;
                 return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
-                    <span style={{ fontSize: 13, fontWeight: '600', color: C.text, width: 36 }}>{m}</span>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, color: C.textMuted }}>{d.count}件</span>
-                      <span style={{ fontSize: 12, color: C.green, fontWeight: '600' }}>+{fmt(d.profit)}</span>
-                      <span style={{ fontSize: 14, fontWeight: '700', color: C.text }}>{fmt(d.revenue)}</span>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: '600', color: C.text }}>{m}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{d.count}件</div>
+                    </div>
+                    <div style={{ textAlign: 'right' as const }}>
+                      <div style={{ fontSize: 15, fontWeight: '700', color: C.text }}>{fmt(d.revenue)}</div>
+                      <div style={{ fontSize: 11, color: C.green, fontWeight: '600', marginTop: 2 }}>利益 {fmt(d.profit)}</div>
                     </div>
                   </div>
                 );
